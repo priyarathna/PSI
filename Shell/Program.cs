@@ -98,6 +98,21 @@ static class Start {
 
       Console.WriteLine ("-----------------");
       Console.WriteLine ($"Expression = {expr}");
+
+      Dictionary<string, NType> types = new () { ["pi"] = NType.Real, ["sin"] = NType.Real, ["atan2"] = NType.Real, ["length"] = NType.Int, ["random"] = NType.Int };
+      NType type = node.Accept (new ExprTyper (types));
+      Console.WriteLine ($"Type = {type}");
+
+      var graph = new ExprGrapher (expr);
+      node.Accept (graph);
+      Directory.CreateDirectory ("c:/etc");
+      graph.SaveTo ("c:/etc/test5.html");
+      var pi = new ProcessStartInfo ("c:/etc/test5.html") { UseShellExecute = true };
+      Process.Start (pi);
+
+      var il = node.Accept (new ExprILGen ());
+      Console.WriteLine ($"\nIL Code = \n{il}");
+      Console.Write ("\nPress any key..."); Console.ReadKey (true);
    }
 
    static string Prog0 = """

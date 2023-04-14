@@ -38,7 +38,9 @@ public class ExprTyper : Visitor<NType> {
       };
    }
 
-   public override NType Visit (NFnCall binary) {
-      throw new NotImplementedException ();
+   public override NType Visit (NFnCall func) {
+      func.Type = mSymbols[func.Name.Text];
+      foreach (var a in func.Params) a.Accept (this);
+      return func.Type;
    }
 }

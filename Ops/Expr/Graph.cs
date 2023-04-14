@@ -24,8 +24,12 @@ public class ExprGrapher : Visitor<int> {
       return id; 
    }
 
-   public override int Visit (NFnCall binary) {
-      throw new NotImplementedException ();
+   public override int Visit (NFnCall func) {
+      List<int> args = new ();
+      foreach (var p in func.Params) args.Add (p.Accept (this));
+      int id = NewNode ($"([{func.Name.Text} : {func.Type}])");
+      args.ForEach (a => mSB.AppendLine ($"id{mID} --> id{a};"));
+      return id;
    }
 
    public void SaveTo (string file) {

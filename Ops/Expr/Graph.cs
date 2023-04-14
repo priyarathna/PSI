@@ -24,6 +24,10 @@ public class ExprGrapher : Visitor<int> {
       return id; 
    }
 
+   public override int Visit (NFnCall binary) {
+      throw new NotImplementedException ();
+   }
+
    public void SaveTo (string file) {
       string text = $$"""
          <!DOCTYPE html>

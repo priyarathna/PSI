@@ -16,6 +16,8 @@ factor =
 unary = 
     ( "-" | "+" ) unary | primary .
 
-primary 
-    = IDENTIFIER | NUMBER | STRING | "(" expression ")" | "not" primary .
-    
+arglist = 
+    "(" [ expression { "," expression } ] ")" .
+
+primary = 
+    IDENTIFIER | NUMBER | STRING | "(" expression ")" | "not" primary| IDENTIFIER arglist .

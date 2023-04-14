@@ -43,7 +43,6 @@ static class Start {
       graph.SaveTo ("c:/etc/test.html");
       var pi = new ProcessStartInfo ("c:/etc/test.html") { UseShellExecute = true };
       Process.Start (pi);
-      Console.Write ("\nPress any key..."); Console.ReadKey (true);
 
       var xml = new ExprXML ();
       var output = node.Accept (xml).ToString ();

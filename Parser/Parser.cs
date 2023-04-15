@@ -62,10 +62,7 @@ public class Parser {
       Expect (OPEN, "Expecting identifier or literal");
       if (Match (CLOSE)) return exprs.ToArray ();
       exprs.Add (Primary ());
-      while (Peek (COMMA)) {
-         mToken = mTokenizer.Next ();
-         exprs.Add (Primary ());
-      }
+      while (Match (COMMA)) exprs.Add (Primary ());
       Expect (CLOSE, "Expecting ')'");
       return exprs.ToArray ();
    }

@@ -8,8 +8,8 @@ public class ExprXML : Visitor<XElement> {
       new XElement ("Ident", new XAttribute ("Name", identifier.Name), new XAttribute ("Type", identifier.Type));
 
    public override XElement Visit (NUnary unary) =>
-      new XElement ("Unary", new XAttribute ("Op", unary.Op.Kind), new XAttribute ("Type", unary.Type), new XElement (unary.Expr.Accept (this)));
+      new XElement ("Unary", new XAttribute ("Op", unary.Op.Kind), new XAttribute ("Type", unary.Type), unary.Expr.Accept (this));
 
    public override XElement Visit (NBinary binary) =>
-      new XElement ("Binary", new XAttribute ("Op", binary.Op.Kind), new XAttribute ("Type", binary.Type), new XElement (binary.Left.Accept (this)), new XElement (binary.Right.Accept (this)));
+      new XElement ("Binary", new XAttribute ("Op", binary.Op.Kind), new XAttribute ("Type", binary.Type), binary.Left.Accept (this), binary.Right.Accept (this));
 }

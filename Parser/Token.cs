@@ -50,10 +50,16 @@ public class Token {
          if (idx > 0) Write (idx);
          factor--;
       }
-      string currLine = $"{Line}\u2502{Source.Lines[Line - 1]}";
       ForegroundColor = ConsoleColor.Yellow;
-      WriteLine (new string (' ', currLine.Length - 2) + "^");
-      WriteLine (new string (' ', currLine.Length - 8) + Text);
+      var pos = Column + 3;
+      WriteLine (new string (' ', pos) + "^");
+      var txtLen = Text.Length / 2;
+      var flag = pos >= WindowWidth;
+      if (flag) pos %= WindowWidth;
+      if (pos + txtLen < WindowWidth) pos -= txtLen - 1;
+      else pos -= Text.Length - 1;
+      pos = pos < 0 ? flag ? 0 : 4 : pos;
+      WriteLine (new string (' ', pos) + Text);
       ResetColor ();
       factor = 1;
       for (int i = 0; i < 2; i++) {

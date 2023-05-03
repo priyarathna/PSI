@@ -23,17 +23,34 @@ public class TypeAnalyze : Visitor<NType> {
    }
 
    public override NType Visit (NDeclarations d) {
-      Visit (d.Vars); return Visit (d.Funcs);
+      Visit (d.Consts); Visit (d.Vars); return Visit (d.Funcs);
    }
 
    public override NType Visit (NVarDecl d) {
-      mSymbols.Vars.Add (d);
+      if (mSymbols.Find (d.Name.Text, true) is NVarDecl variable && variable.Name.Source != null)
+         throw new ParseException (d.Name, "Variable already defined in this scope");
+      switch (mSymbols.Find (d.Name.Text)) {
+         case NFnDecl:
+            throw new ParseException (d.Name, "Variable name is same as function name");
+         case NConstDecl:
+            throw new ParseException (d.Name, "Variable name is same as const name");
+         default: if(!mSymbols.Vars.Contains(d)) mSymbols.Vars.Add (d); break;
+      }
       return d.Type;
    }
 
    public override NType Visit (NFnDecl f) {
+      if (mSymbols.Find (f.Name.Text) is NConstDecl)
+         throw new ParseException (f.Name, "Function name is same as const name");
       mSymbols.Funcs.Add (f);
       return f.Return;
+   }
+
+   public override NType Visit (NConstDecl c) {
+      if (mSymbols.Find (c.Name.Text) is NFnDecl)
+         throw new ParseException (c.Name, "Const name is same as function name");
+      mSymbols.Consts.Add (c);
+      return c.Type = GetType (c.Value.Kind);
    }
    #endregion
 
@@ -42,11 +59,17 @@ public class TypeAnalyze : Visitor<NType> {
       => Visit (b.Stmts);
 
    public override NType Visit (NAssignStmt a) {
-      if (mSymbols.Find (a.Name.Text) is not NVarDecl v)
-         throw new ParseException (a.Name, "Unknown variable");
+      NType type;
+      NVarDecl? varDecl = null;
+      switch (mSymbols.Find (a.Name.Text)) {
+         case NFnDecl f: type = f.Return; break;
+         case NVarDecl v: type = v.Type; varDecl = v; break;
+         default: throw new ParseException (a.Name, "Unknown variable");
+      }
       a.Expr.Accept (this);
-      a.Expr = AddTypeCast (a.Name, a.Expr, v.Type);
-      return v.Type;
+      a.Expr = AddTypeCast (a.Name, a.Expr, type);
+      if (varDecl != null && !mDefinedChars.Contains (a.Name.Text)) mDefinedChars.Add (a.Name.Text);
+      return type;
    }
    
    NExpr AddTypeCast (Token token, NExpr source, NType target) {
@@ -69,6 +92,10 @@ public class TypeAnalyze : Visitor<NType> {
    }
 
    public override NType Visit (NForStmt f) {
+      var name = f.Var.Text;
+      if (mSymbols.Find (name) is not NVarDecl)
+         throw new ParseException (f.Var, "Unknown variable");
+      if (!mDefinedChars.Contains (name)) mDefinedChars.Add (name);
       f.Start.Accept (this); f.End.Accept (this); f.Body.Accept (this);
       return Void;
    }
@@ -93,13 +120,7 @@ public class TypeAnalyze : Visitor<NType> {
    #endregion
 
    #region Expression --------------------------------------
-   public override NType Visit (NLiteral t) {
-      t.Type = t.Value.Kind switch {
-         L_INTEGER => Int, L_REAL => Real, L_BOOLEAN => Bool, L_STRING => String,
-         L_CHAR => Char, _ => Error,
-      };
-      return t.Type;
-   }
+   public override NType Visit (NLiteral t) => t.Type = GetType (t.Value.Kind);
 
    public override NType Visit (NUnary u) 
       => u.Expr.Accept (this);
@@ -134,13 +155,28 @@ public class TypeAnalyze : Visitor<NType> {
    }
 
    public override NType Visit (NIdentifier d) {
-      if (mSymbols.Find (d.Name.Text) is NVarDecl v) 
+      if (mSymbols.Find (d.Name.Text) is NVarDecl v) {
+         if (!mDefinedChars.Contains (d.Name.Text)) throw new ParseException (d.Name, $"Use of unassigned local variable");
          return d.Type = v.Type;
+      }
+      if (mSymbols.Find (d.Name.Text) is NConstDecl c)
+         return d.Type = c.Type;
       throw new ParseException (d.Name, "Unknown variable");
    }
 
    public override NType Visit (NFnCall f) {
-      throw new NotImplementedException ();
+      var fName = f.Name;
+      if (mSymbols.Find (fName.Text) is NFnDecl x) {
+         var len = f.Params.Length;
+         if (x.Params.Length != len) throw new ParseException (fName, $"No overload for this function takes {len} arguments");
+         for (int i = 0; i < len; i++) {
+            NType type1 = f.Params[i].Accept (this), type2 = x.Params[i].Accept (this);
+            if (type1 != type2) f.Params[i] = AddTypeCast (fName, f.Params[i], type2);
+         }
+         x.Body?.Accept (this);
+         return f.Type = x.Return;
+      }
+      throw new ParseException (fName, "Unknown function");
    }
 
    public override NType Visit (NTypeCast c) {
@@ -152,4 +188,11 @@ public class TypeAnalyze : Visitor<NType> {
       foreach (var node in nodes) node.Accept (this);
       return NType.Void;
    }
+
+   NType GetType (Token.E kind) => kind switch {
+      L_INTEGER => Int, L_REAL => Real, L_BOOLEAN => Bool, L_STRING => String,
+      L_CHAR => Char, _ => Error,
+   };
+
+   List<string> mDefinedChars = new ();
 }

@@ -21,77 +21,8 @@ public class Parser {
    NProgram Program () {
       Expect (PROGRAM); var name = Expect (IDENT); Expect (SEMI);
       var block = Block (); Expect (PERIOD);
-      ProcessStmts (block, block.Body.Stmts);
       return new (name, block);
    }
-
-   void ProcessStmts (NBlock? block, NStmt[] stmts) {
-      if (block == null) return;
-      foreach (var stmt in stmts) CheckStmt (stmt);
-
-      void CheckStmt (NStmt stmt) {
-         switch (stmt) {
-            case NAssignStmt assignStmt:
-               CheckExpr (assignStmt.Expr, assignStmt.Name.Text);
-               break;
-            case NIfStmt ifStmt:
-               CheckExpr (ifStmt.Condition, "");
-               if (ifStmt.IfPart != null) CheckStmt (ifStmt.IfPart);
-               if (ifStmt.ElsePart != null) CheckStmt (ifStmt.ElsePart);
-               break;
-            case NForStmt forStmt:
-               CheckExpr (forStmt.Start, forStmt.Var.Text); CheckExpr (forStmt.End, forStmt.Var.Text);
-               if (forStmt.Body != null) CheckStmt (forStmt.Body);
-               break;
-            case NWhileStmt whileStmt:
-               CheckExpr (whileStmt.Condition, "");
-               if (whileStmt.Body != null) CheckStmt (whileStmt.Body);
-               break;
-            case NWriteStmt writeStmt:
-               writeStmt.Exprs.ForEach (x => CheckExpr (x, ""));
-               break;
-            case NRepeatStmt repeatStmt:
-               CheckExpr (repeatStmt.Condition, "");
-               repeatStmt.Stmts.ForEach (x => CheckStmt (x));
-               break;
-         }
-      }
-
-      void CheckExpr (NExpr expr, string nameTxt) {
-         switch (expr) {
-            case NLiteral: CheckLiteral (nameTxt); break;
-            case NIdentifier identifier:
-               CheckIdentifier (identifier);
-               if (block.Declarations.Funcs.FirstOrDefault (x => x.Name.Text.EqualsIC (nameTxt)) == null) {
-                  if (!mDefinedVars.Contains (nameTxt)) mDefinedVars.Add (nameTxt);
-               }
-               break;
-            case NUnary unary:
-               CheckExpr (unary.Expr, nameTxt);
-               break;
-            case NBinary binary:
-               CheckExpr (binary.Left, nameTxt); CheckExpr (binary.Right, nameTxt);
-               break;
-            case NFnCall f:
-               var func = SymTable.Root.Funcs.FirstOrDefault (x => x.Name.Text.EqualsIC (f.Name.Text)) ?? block.Declarations.Funcs.FirstOrDefault (x => x.Name.Text.EqualsIC (f.Name.Text)) ?? throw new ParseException (f.Name, "Unknown function");
-               if (func.Body != null) ProcessStmts (block, func.Body.Body.Stmts);
-               break;
-         }
-      }
-
-      void CheckLiteral (string nameTxt) {
-         if (!mDefinedVars.Contains (nameTxt)) mDefinedVars.Add (nameTxt);
-      }
-
-      void CheckIdentifier (NIdentifier identifier) {
-         var nameTxt = identifier.Name.Text;
-         if (block.Declarations.Vars.FirstOrDefault (x => x.Name.Text.EqualsIC (nameTxt)) == null)
-            throw new ParseException (identifier.Name, "Variable doesn't exist in current context");
-         if (!mDefinedVars.Contains (nameTxt))
-            throw new ParseException (identifier.Name, "Use of anassigned local variable");
-      }
-   }
-   List<string> mDefinedVars = new ();
 
    // block = declarations compound-stmt .
    NBlock Block ()

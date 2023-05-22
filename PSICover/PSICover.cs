@@ -150,33 +150,32 @@ class Analyzer {
    void GenerateOutputs () {
       ulong[] hits = File.ReadAllLines ($"{Dir}/hits.txt").Select (ulong.Parse).ToArray ();
       var files = mBlocks.Select (a => a.File).Distinct ().ToArray ();
-      var res = new List<Tuple<string, int, int, double>> ();
-      int blksCnt, hitCnt;
+      var res = new List<(string fName, int totalBlks, int coveredBlocks, double percent)> ();
       foreach (var file in files) {
          var blocks = mBlocks.Where (a => a.File == file)
                              .OrderBy (a => a.SPosition)
                              .ThenByDescending (a => a.EPosition)
                              .ToList ();
-         blksCnt = hitCnt = 0;
+         int cBlks, cHits = 0;
          for (int i = blocks.Count - 1; i > 0; i--)
             if (blocks[i - 1].Contains (blocks[i]))
                blocks.RemoveAt (i - 1);
          blocks.Reverse ();
-         blksCnt = blocks.Count;
+         cBlks = blocks.Count;
 
          var code = File.ReadAllLines (file);
          for (int i = 0; i < code.Length; i++)
             code[i] = code[i].Replace ('<', '\u00ab').Replace ('>', '\u00bb');
          foreach (var block in blocks) {
-            bool hit = hits[block.Id] > 0;
-            if (hit) hitCnt++;
-            string tag = $"<span class=\"{(hit ? "hit" : "unhit")}\"" + (hit ? $"title = \"{hits[block.Id]} hits\">" : ">");
-            if (block.ELine > block.SLine) {
-               for (int i = block.ELine; i >= block.SLine; i--)
-                  code[i] = code[i].Insert (code[i].TakeWhile (char.IsWhiteSpace).Count (), tag) + "</span>";
-            } else {
-               code[block.ELine] = code[block.ELine].Insert (block.ECol, "</span>");
-               code[block.SLine] = code[block.SLine].Insert (block.SCol, tag);
+            var count = hits[block.Id];
+            bool hit = count > 0;
+            if (hit) cHits++;
+            string tag = $"<span class=\"{(hit ? "hit" : "unhit")}\" title= \"{count} hits\">";
+            for (int i = block.ELine; i >= block.SLine; i--) {
+               var str = code[i];
+               var start = i == block.SLine ? block.SCol : str.TakeWhile (char.IsWhiteSpace).Count ();
+               var end = i == block.ELine ? block.ECol : str.Length;
+               code[i] = str.Insert (end, "</span>").Insert (start, tag);
             }
          }
          string htmlfile = $"{Dir}/HTML/{Path.GetFileNameWithoutExtension (file)}.html";
@@ -192,7 +191,7 @@ class Analyzer {
             """;
          html = html.Replace ("\u00ab", "&lt;").Replace ("\u00bb", "&gt;");
          File.WriteAllText (htmlfile, html);
-         res.Add (new Tuple<string, int, int, double> (Path.GetFileName (file), blksCnt, hitCnt, Math.Round (100.0 * hitCnt / blksCnt, 1)));
+         res.Add (new (Path.GetFileName (file), cBlks, cHits, Math.Round (100.0 * cHits / cBlks, 1)));
       }
       int cBlocks = mBlocks.Count, cHit = hits.Count (a => a > 0);
       double percent = Math.Round (100.0 * cHit / cBlocks, 1);

@@ -66,8 +66,15 @@ public class ILCodeGen : Visitor {
       }
       if (w.NewLine) Out ("    call void [System.Console]System.Console::WriteLine ()");
    }
-   
-   public override void Visit (NIfStmt f) => throw new NotImplementedException ();
+
+   public override void Visit (NIfStmt f) {
+      string lab = NextLabel ();
+      f.Condition.Accept (this);
+      Out ($"    brfalse {lab}");
+      f.IfPart.Accept (this);
+      Out ($"  {lab}:");
+      f.ElsePart?.Accept (this);
+   }
    public override void Visit (NForStmt f) => throw new NotImplementedException ();
    public override void Visit (NReadStmt r) => throw new NotImplementedException ();
 
@@ -121,7 +128,7 @@ public class ILCodeGen : Visitor {
    public override void Visit (NUnary u) {
       u.Expr.Accept (this);
       string op = u.Op.Kind.ToString ().ToLower ();
-      op = op switch { "sub" => "neg", _ => op };
+      op = op switch { "sub" => "neg", "not" => AddEQ (false), _ => op };
       Out ($"    {op}");
    }
 
@@ -131,7 +138,16 @@ public class ILCodeGen : Visitor {
          Out ("    call string [System.Runtime]System.String::Concat (string, string)");
       else {
          string op = b.Op.Kind.ToString ().ToLower ();
-         op = op switch { "mod" => "rem", "eq" => "ceq", "lt" => "clt", _ => op };
+         op = op switch {
+            "mod" => "rem",
+            "eq" => "ceq",
+            "lt" => "clt",
+            "leq" => $"cgt{AddEQ()}",
+            "neq" => $"ceq{AddEQ ()}",
+            "gt" => "cgt",
+            "geq" => $"clt{AddEQ ()}",
+            _ => op
+         };
          Out ($"    {op}");
       }
    }
@@ -161,6 +177,9 @@ public class ILCodeGen : Visitor {
 
    int BoolToInt (Token token)
       => token.Text.EqualsIC ("TRUE") ? 1 : 0;
+
+   string AddEQ (bool iNewStart = true) =>
+      iNewStart ? $"{Environment.NewLine}    ldc.i4.0{Environment.NewLine}    ceq" : $"ldc.i4.0{Environment.NewLine}    ceq";
 
    // Dictionary that maps PSI.NType to .Net type names
    static Dictionary<NType, string> TMap = new () {

@@ -54,9 +54,7 @@ public class ILCodeGen : Visitor {
 
    void StoreVar (Token name) {
       var vd = (NVarDecl)mSymbols.Find (name)!;
-      var type = TMap[vd.Type];
-      if (vd.Local) Out ($"    stloc {vd.Name}");
-      else Out ($"    stsfld {type} Program::{vd.Name}");
+      Out (GetS (vd.Local, vd.Name, TMap[vd.Type]));
    }
 
    public override void Visit (NWriteStmt w) {
@@ -68,7 +66,25 @@ public class ILCodeGen : Visitor {
    }
    
    public override void Visit (NIfStmt f) => throw new NotImplementedException ();
-   public override void Visit (NForStmt f) => throw new NotImplementedException ();
+   public override void Visit (NForStmt f) {
+      f.Start.Accept (this);
+      var vd = (NVarDecl)mSymbols.Find (f.Var)!;
+      var type = TMap[vd.Type];
+      StoreVar (f.Var);
+      string lab1 = NextLabel (), lab2 = NextLabel ();
+      Out ($"    br {lab1}");
+      Out ($"  {lab2}:");
+      f.Body.Accept (this);
+      Out ($"{GetL (vd.Local, vd.Name, type)}");
+      Out ("    ldc.i4.1");
+      Out ($"    {(f.Ascending ? "add" : "sub")}");
+      Out ($"{GetS (vd.Local, vd.Name, type)}");
+      Out ($"    {lab1}:");
+      Out ($"{GetL (vd.Local, vd.Name, type)}");
+      f.End.Accept (this);
+      Out ($"    {(f.Ascending ? "cgt" : "clt")}");
+      Out ($"    brfalse {lab2}");
+   }
    public override void Visit (NReadStmt r) => throw new NotImplementedException ();
 
    public override void Visit (NWhileStmt w) {
@@ -111,8 +127,7 @@ public class ILCodeGen : Visitor {
          case NConstDecl cd: Visit (cd.Value); break;
          case NVarDecl vd:
             var type = TMap[vd.Type];
-            if (vd.Local) Out ($"    ldloc {vd.Name}");
-            else Out ($"    ldsfld {type} Program::{vd.Name}");
+            Out ($"{GetL (vd.Local, vd.Name, type)}");
             break;
          default: throw new NotImplementedException ();
       }
@@ -161,6 +176,12 @@ public class ILCodeGen : Visitor {
 
    int BoolToInt (Token token)
       => token.Text.EqualsIC ("TRUE") ? 1 : 0;
+
+   string GetL (bool iLocal, Token name, string type)
+      => iLocal ? $"    ldloc {name}" : $"    ldsfld {type} Program::{name}";
+
+   string GetS (bool iLocal, Token name, string type)
+      => iLocal ? $"    stloc {name}" : $"    stsfld {type} Program::{name}";
 
    // Dictionary that maps PSI.NType to .Net type names
    static Dictionary<NType, string> TMap = new () {

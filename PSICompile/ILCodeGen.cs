@@ -27,7 +27,9 @@ public class ILCodeGen : Visitor {
    }
    SymTable mSymbols = SymTable.Root;
 
-   public override void Visit (NBlock b) => throw new NotImplementedException ();
+   public override void Visit (NBlock b) {
+      Visit (b.Declarations); Visit (b.Body);
+   }
 
    public override void Visit (NDeclarations d) {
       Visit (d.Consts); Visit (d.Vars); Visit (d.Funcs);
@@ -39,10 +41,25 @@ public class ILCodeGen : Visitor {
 
    public override void Visit (NVarDecl v) {
       mSymbols.Add (v);
-      Out ($"    .field static {TMap[v.Type]} {v.Name}");
+      if (v.Local) Out ($"    .locals init ({TMap[v.Type]} {v.Name})");
+      else Out ($"    .field static {TMap[v.Type]} {v.Name}");
    }
 
-   public override void Visit (NFnDecl f) => throw new NotImplementedException ();
+   public override void Visit (NFnDecl f) {
+      mSymbols.Add (f);
+      mSymbols = new SymTable { Parent = mSymbols, Local = true };
+      List<string> paramsList = new ();
+      foreach (var p in f.Params) {
+         mSymbols.Add (p);
+         p.Argument = true;
+         paramsList.Add ($"{TMap[p.Type]} {p.Name}");
+      }
+      Out ($"  .method static {TMap[f.Return]} {f.Name} ({string.Join (',', paramsList)}) {{");
+      f.Block?.Accept (this);
+      Out ("    ret");
+      Out ("  }");
+      mSymbols = mSymbols.Parent;
+   }
 
    public override void Visit (NCompoundStmt b) =>
       Visit (b.Stmts);
@@ -53,7 +70,8 @@ public class ILCodeGen : Visitor {
    }
 
    void StoreVar (Token name) {
-      var vd = (NVarDecl)mSymbols.Find (name)!;
+      var vd = mSymbols.Find (name)! as NVarDecl;
+      if (vd == null) return;
       var type = TMap[vd.Type];
       if (vd.Local) Out ($"    stloc {vd.Name}");
       else Out ($"    stsfld {type} Program::{vd.Name}");
@@ -111,7 +129,8 @@ public class ILCodeGen : Visitor {
          case NConstDecl cd: Visit (cd.Value); break;
          case NVarDecl vd:
             var type = TMap[vd.Type];
-            if (vd.Local) Out ($"    ldloc {vd.Name}");
+            if (vd.Argument) Out ($"    ldarg {vd.Name}");
+            else if (vd.Local) Out ($"    ldloc {vd.Name}");
             else Out ($"    ldsfld {type} Program::{vd.Name}");
             break;
          default: throw new NotImplementedException ();
@@ -135,8 +154,15 @@ public class ILCodeGen : Visitor {
          Out ($"    {op}");
       }
    }
-   
-   public override void Visit (NFnCall f) => throw new NotImplementedException ();
+
+   public override void Visit (NFnCall f) {
+      Visit (f.Params);
+      var fd = (NFnDecl)mSymbols.Find (f.Name)!;
+      string type = TMap[fd.Return], name = fd.Name.Text, lib = "Program";
+      List<string> paramsList = new ();
+      f.Params.ForEach (x => paramsList.Add (TMap[x.Type]));
+      Out ($"    call {type} {lib}::{name} ({string.Join (',', paramsList)})");
+   }
 
    public override void Visit (NTypeCast t) {
       t.Expr.Accept (this);

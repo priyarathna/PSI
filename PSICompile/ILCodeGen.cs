@@ -27,7 +27,9 @@ public class ILCodeGen : Visitor {
    }
    SymTable mSymbols = SymTable.Root;
 
-   public override void Visit (NBlock b) => throw new NotImplementedException ();
+   public override void Visit (NBlock b) {
+      Visit (b.Declarations); Visit (b.Body);
+   }
 
    public override void Visit (NDeclarations d) {
       Visit (d.Consts); Visit (d.Vars); Visit (d.Funcs);
@@ -39,10 +41,25 @@ public class ILCodeGen : Visitor {
 
    public override void Visit (NVarDecl v) {
       mSymbols.Add (v);
-      Out ($"    .field static {TMap[v.Type]} {v.Name}");
+      if (v.Local) Out ($"    .locals init ({TMap[v.Type]} {v.Name})");
+      else Out ($"    .field static {TMap[v.Type]} {v.Name}");
    }
 
-   public override void Visit (NFnDecl f) => throw new NotImplementedException ();
+   public override void Visit (NFnDecl f) {
+      mSymbols.Add (f);
+      mSymbols = new SymTable { Parent = mSymbols, Local = true };
+      List<string> paramsList = new ();
+      foreach (var p in f.Params) {
+         mSymbols.Add (p);
+         p.Argument = true;
+         paramsList.Add ($"{TMap[p.Type]} {p.Name}");
+      }
+      Out ($"  .method static {TMap[f.Return]} {f.Name} ({string.Join (',', paramsList)}) {{");
+      f.Block?.Accept (this);
+      Out ("    ret");
+      Out ("  }");
+      mSymbols = mSymbols.Parent;
+   }
 
    public override void Visit (NCompoundStmt b) =>
       Visit (b.Stmts);
@@ -53,7 +70,8 @@ public class ILCodeGen : Visitor {
    }
 
    void StoreVar (Token name) {
-      var vd = (NVarDecl)mSymbols.Find (name)!;
+      var vd = mSymbols.Find (name)! as NVarDecl;
+      if (vd == null) return;
       var type = TMap[vd.Type];
       if (vd.Local) Out ($"    stloc {vd.Name}");
       else Out ($"    stsfld {type} Program::{vd.Name}");
@@ -66,8 +84,18 @@ public class ILCodeGen : Visitor {
       }
       if (w.NewLine) Out ("    call void [System.Console]System.Console::WriteLine ()");
    }
-   
-   public override void Visit (NIfStmt f) => throw new NotImplementedException ();
+
+   public override void Visit (NIfStmt f) {
+      var iElse = f.ElsePart != null;
+      string lab = NextLabel (), lab2 = iElse ? NextLabel () : "";
+      f.Condition.Accept (this);
+      Out ($"    brfalse {lab}");
+      f.IfPart.Accept (this);
+      if (iElse) Out ($"    br {lab2}");
+      Out ($"  {lab}:");
+      if (iElse) { f.ElsePart?.Accept (this); Out ($"    {lab2}:"); }
+   }
+
    public override void Visit (NForStmt f) => throw new NotImplementedException ();
    public override void Visit (NReadStmt r) => throw new NotImplementedException ();
 
@@ -91,8 +119,8 @@ public class ILCodeGen : Visitor {
    string NextLabel () => $"IL_{++mLabel:D4}";
    int mLabel;
 
-   
-   public override void Visit (NCallStmt c) => throw new NotImplementedException ();
+
+   public override void Visit (NCallStmt c) => OutCStmts (c.Name, c.Params);
 
    public override void Visit (NLiteral t) {
       var v = t.Value;
@@ -111,8 +139,12 @@ public class ILCodeGen : Visitor {
          case NConstDecl cd: Visit (cd.Value); break;
          case NVarDecl vd:
             var type = TMap[vd.Type];
-            if (vd.Local) Out ($"    ldloc {vd.Name}");
-            else Out ($"    ldsfld {type} Program::{vd.Name}");
+            if (vd.Argument) Out ($"    ldarg {vd.Name}");
+            else if (vd.Local) Out ($"    ldloc {vd.Name}");
+            else {
+               if (vd.StdLib) Out ($"    call {type} [PSILib]PSILib.Lib::get_{vd.Name}()");
+               else Out ($"    ldsfld {type} Program::{vd.Name}");
+            }
             break;
          default: throw new NotImplementedException ();
       }
@@ -121,7 +153,7 @@ public class ILCodeGen : Visitor {
    public override void Visit (NUnary u) {
       u.Expr.Accept (this);
       string op = u.Op.Kind.ToString ().ToLower ();
-      op = op switch { "sub" => "neg", _ => op };
+      op = op switch { "sub" => "neg", "not" => AddEQ (false), _ => op };
       Out ($"    {op}");
    }
 
@@ -131,12 +163,21 @@ public class ILCodeGen : Visitor {
          Out ("    call string [System.Runtime]System.String::Concat (string, string)");
       else {
          string op = b.Op.Kind.ToString ().ToLower ();
-         op = op switch { "mod" => "rem", "eq" => "ceq", "lt" => "clt", _ => op };
+         op = op switch {
+            "mod" => "rem",
+            "eq" => "ceq",
+            "lt" => "clt",
+            "leq" => $"cgt{AddEQ ()}",
+            "neq" => $"ceq{AddEQ ()}",
+            "gt" => "cgt",
+            "geq" => $"clt{AddEQ ()}",
+            _ => op
+         };
          Out ($"    {op}");
       }
    }
-   
-   public override void Visit (NFnCall f) => throw new NotImplementedException ();
+
+   public override void Visit (NFnCall f) => OutCStmts (f.Name, f.Params);
 
    public override void Visit (NTypeCast t) {
       t.Expr.Accept (this);
@@ -159,8 +200,20 @@ public class ILCodeGen : Visitor {
       foreach (var node in nodes) node.Accept (this);
    }
 
+   void OutCStmts (Token name, NExpr[] args) {
+      Visit (args);
+      var fd = (NFnDecl)mSymbols.Find (name)!;
+      string type = TMap[fd.Return], txt = fd.Name.Text, lib = fd.StdLib ? "[PSILib]PSILib.Lib" : "Program";
+      List<string> paramsList = new ();
+      args.ForEach (x => paramsList.Add (TMap[x.Type]));
+      Out ($"    call {type} {lib}::{txt} ({string.Join (',', paramsList)})");
+   }
+
    int BoolToInt (Token token)
       => token.Text.EqualsIC ("TRUE") ? 1 : 0;
+
+   string AddEQ (bool iNewStart = true) =>
+       iNewStart ? $"\n    ldc.i4.0\n    ceq" : $"ldc.i4.0\n    ceq";
 
    // Dictionary that maps PSI.NType to .Net type names
    static Dictionary<NType, string> TMap = new () {

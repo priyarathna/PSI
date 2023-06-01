@@ -23,4 +23,6 @@ begin
   if (3 < 2) or (4 < 3) then WriteLn ("3 < 2 or 4 < 3 ???");
   if not (3 < 2) then WriteLn ("not 3 < 2");
   if not (2 < 3) then WriteLn ("not 2 < 3 ???");
+  
+  if 2 < 3 then WriteLn ("2 < 3"); else WriteLn ("Strange");
 end.

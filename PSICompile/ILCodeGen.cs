@@ -68,13 +68,16 @@ public class ILCodeGen : Visitor {
    }
 
    public override void Visit (NIfStmt f) {
-      string lab = NextLabel ();
+      var iElse = f.ElsePart != null;
+      string lab = NextLabel (), lab2 = iElse ? NextLabel () : "";
       f.Condition.Accept (this);
       Out ($"    brfalse {lab}");
       f.IfPart.Accept (this);
+      if (iElse) Out ($"    br {lab2}");
       Out ($"  {lab}:");
-      f.ElsePart?.Accept (this);
+      if (iElse) { f.ElsePart?.Accept (this); Out ($"    {lab2}:"); }
    }
+
    public override void Visit (NForStmt f) => throw new NotImplementedException ();
    public override void Visit (NReadStmt r) => throw new NotImplementedException ();
 
@@ -179,7 +182,7 @@ public class ILCodeGen : Visitor {
       => token.Text.EqualsIC ("TRUE") ? 1 : 0;
 
    string AddEQ (bool iNewStart = true) =>
-      iNewStart ? $"{Environment.NewLine}    ldc.i4.0{Environment.NewLine}    ceq" : $"ldc.i4.0{Environment.NewLine}    ceq";
+      iNewStart ? $"\n    ldc.i4.0\n    ceq" : $"ldc.i4.0\n    ceq";
 
    // Dictionary that maps PSI.NType to .Net type names
    static Dictionary<NType, string> TMap = new () {

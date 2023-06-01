@@ -119,8 +119,8 @@ public class ILCodeGen : Visitor {
    string NextLabel () => $"IL_{++mLabel:D4}";
    int mLabel;
 
-   
-   public override void Visit (NCallStmt c) => throw new NotImplementedException ();
+
+   public override void Visit (NCallStmt c) => OutCStmts (c.Name, c.Params);
 
    public override void Visit (NLiteral t) {
       var v = t.Value;
@@ -177,14 +177,7 @@ public class ILCodeGen : Visitor {
       }
    }
 
-   public override void Visit (NFnCall f) {
-      Visit (f.Params);
-      var fd = (NFnDecl)mSymbols.Find (f.Name)!;
-      string type = TMap[fd.Return], name = fd.Name.Text, lib = fd.StdLib ? "[PSILib]PSILib.Lib" : "Program";
-      List<string> paramsList = new ();
-      f.Params.ForEach (x => paramsList.Add (TMap[x.Type]));
-      Out ($"    call {type} {lib}::{name} ({string.Join (',', paramsList)})");
-   }
+   public override void Visit (NFnCall f) => OutCStmts (f.Name, f.Params);
 
    public override void Visit (NTypeCast t) {
       t.Expr.Accept (this);
@@ -205,6 +198,15 @@ public class ILCodeGen : Visitor {
    // Call Accept on a sequence of nodes
    void Visit (IEnumerable<Node> nodes) {
       foreach (var node in nodes) node.Accept (this);
+   }
+
+   void OutCStmts (Token name, NExpr[] args) {
+      Visit (args);
+      var fd = (NFnDecl)mSymbols.Find (name)!;
+      string type = TMap[fd.Return], txt = fd.Name.Text, lib = fd.StdLib ? "[PSILib]PSILib.Lib" : "Program";
+      List<string> paramsList = new ();
+      args.ForEach (x => paramsList.Add (TMap[x.Type]));
+      Out ($"    call {type} {lib}::{txt} ({string.Join (',', paramsList)})");
    }
 
    int BoolToInt (Token token)

@@ -84,8 +84,18 @@ public class ILCodeGen : Visitor {
       }
       if (w.NewLine) Out ("    call void [System.Console]System.Console::WriteLine ()");
    }
-   
-   public override void Visit (NIfStmt f) => throw new NotImplementedException ();
+
+   public override void Visit (NIfStmt f) {
+      var iElse = f.ElsePart != null;
+      string lab = NextLabel (), lab2 = iElse ? NextLabel () : "";
+      f.Condition.Accept (this);
+      Out ($"    brfalse {lab}");
+      f.IfPart.Accept (this);
+      if (iElse) Out ($"    br {lab2}");
+      Out ($"  {lab}:");
+      if (iElse) { f.ElsePart?.Accept (this); Out ($"    {lab2}:"); }
+   }
+
    public override void Visit (NForStmt f) => throw new NotImplementedException ();
    public override void Visit (NReadStmt r) => throw new NotImplementedException ();
 
@@ -131,7 +141,10 @@ public class ILCodeGen : Visitor {
             var type = TMap[vd.Type];
             if (vd.Argument) Out ($"    ldarg {vd.Name}");
             else if (vd.Local) Out ($"    ldloc {vd.Name}");
-            else Out ($"    ldsfld {type} Program::{vd.Name}");
+            else {
+               if (vd.StdLib) Out ($"    call {type} [PSILib]PSILib.Lib::get_{vd.Name}()");
+               else Out ($"    ldsfld {type} Program::{vd.Name}");
+            }
             break;
          default: throw new NotImplementedException ();
       }
@@ -140,7 +153,7 @@ public class ILCodeGen : Visitor {
    public override void Visit (NUnary u) {
       u.Expr.Accept (this);
       string op = u.Op.Kind.ToString ().ToLower ();
-      op = op switch { "sub" => "neg", _ => op };
+      op = op switch { "sub" => "neg", "not" => AddEQ (false), _ => op };
       Out ($"    {op}");
    }
 
@@ -150,7 +163,16 @@ public class ILCodeGen : Visitor {
          Out ("    call string [System.Runtime]System.String::Concat (string, string)");
       else {
          string op = b.Op.Kind.ToString ().ToLower ();
-         op = op switch { "mod" => "rem", "eq" => "ceq", "lt" => "clt", _ => op };
+         op = op switch {
+            "mod" => "rem",
+            "eq" => "ceq",
+            "lt" => "clt",
+            "leq" => $"cgt{AddEQ ()}",
+            "neq" => $"ceq{AddEQ ()}",
+            "gt" => "cgt",
+            "geq" => $"clt{AddEQ ()}",
+            _ => op
+         };
          Out ($"    {op}");
       }
    }
@@ -158,7 +180,7 @@ public class ILCodeGen : Visitor {
    public override void Visit (NFnCall f) {
       Visit (f.Params);
       var fd = (NFnDecl)mSymbols.Find (f.Name)!;
-      string type = TMap[fd.Return], name = fd.Name.Text, lib = "Program";
+      string type = TMap[fd.Return], name = fd.Name.Text, lib = fd.StdLib ? "[PSILib]PSILib.Lib" : "Program";
       List<string> paramsList = new ();
       f.Params.ForEach (x => paramsList.Add (TMap[x.Type]));
       Out ($"    call {type} {lib}::{name} ({string.Join (',', paramsList)})");
@@ -187,6 +209,9 @@ public class ILCodeGen : Visitor {
 
    int BoolToInt (Token token)
       => token.Text.EqualsIC ("TRUE") ? 1 : 0;
+
+   string AddEQ (bool iNewStart = true) =>
+       iNewStart ? $"\n    ldc.i4.0\n    ceq" : $"ldc.i4.0\n    ceq";
 
    // Dictionary that maps PSI.NType to .Net type names
    static Dictionary<NType, string> TMap = new () {

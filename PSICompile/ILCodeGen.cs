@@ -131,7 +131,8 @@ public class ILCodeGen : Visitor {
    public override void Visit (NUnary u) {
       u.Expr.Accept (this);
       string op = u.Op.Kind.ToString ().ToLower ();
-      op = op switch { "sub" => "neg", "not" => AddEQ (false), _ => op };
+      var iNot = u.Expr.Type is NType.Integer;
+      op = op switch { "sub" => "neg", "not" => iNot ? "not" : AddEQ (false), _ => op };
       Out ($"    {op}");
    }
 

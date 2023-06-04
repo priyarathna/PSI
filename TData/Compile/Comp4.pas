@@ -25,4 +25,6 @@ begin
   if not (2 < 3) then WriteLn ("not 2 < 3 ???");
   
   if 2 < 3 then WriteLn ("2 < 3"); else WriteLn ("Strange");
+  WriteLn (not 2);
+  WriteLn (not false);
 end.
